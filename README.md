@@ -1,66 +1,109 @@
 # eChargeSCAD
 
-OpenSCAD script for the calculation and generation of ejection charges, read the [disclaimer](DISCLAIMER.md) before getting started.
+OpenSCAD scripts for estimating black-powder ejection charges and modelling a
+charge canister. Read the [disclaimer](DISCLAIMER.md) before using anything
+here.
 
-## Description
+> **The output is an estimate, not a charge size.** Ejection depends on things
+> this script does not model, such as the mass of the nose and recovery
+> system, how tightly the recovery system fits, piston versus direct
+> ejection, and leaks. Too little powder means a failed ejection; too much can
+> damage the rocket or the recovery system. **Always ground test before
+> flying**, starting low and working up.
 
-**Important:** This script only provides an estimate of the amount of powder required. Too much or too little may result in a failed recovery or damage to your rocket. **ALWAYS** ground test your rocket before flying.
+## What is here
 
-Ejection occurs when the chamber containing the recovery system is pressurized with sufficient force to eject the recovery system from the chamber. The force required can vary according to several factors:
-
-- Diameter and volume of the body tube
-- Mass of the nose and recovery system
-- Ejection method, for example, piston systems require less pressure
-- Presence of shear pins used to prevent drag separation
-- Fit of the recovery system in the body tube
-
-As such, this calculator will only give you a starting estimate. Too little powder will result in a failed ejection and a failed recovery. Too much powder may result in damage to the rocket or recovery system, which may also result in a failed recovery. It is **ALWAYS** necessary to do a ground test before flying your rocket.
-
-When calculating the volume of the body tube, it is rarely necessary to include the full length. For example, the shoulder of the nose or electronics bay may consume some volume. Adjust your length specification accordingly.
-
-There are some rules of thumb that can be applied based on years of experience from multiple rocket builders. Of primary concern here is the force applied to the ejectable portion, typically the nose cone or electronics bay. Ejection forces at this interface should be between 150 and 200 lbf (~667 to 890 N). The pressure required can then be calculated based on the volume of the chamber. This pressure will be less for larger diameters and more for smaller diameters. There are presets in the calculator to set these forces (low and high settings).
-
-Ground testing should start at the low end of the recommended range to prevent damage to your rocket. Increase the amount as required to ensure safe recovery.
+| File | What it does |
+| --- | --- |
+| `calcs.scad` | A worked example of the charge calculation. Inputs are hard-coded variables in the script; results are printed to the OpenSCAD console with `echo()`. It produces no geometry. |
+| `canister.scad` | Unfinished charge-canister model: two back-to-back `G1/2` male thread adapters built from `Adapters_Mod/`. Its dimensions are fixed and are not taken from `calcs.scad`, and the cap is commented out. |
+| `Adapters_Mod/` | Thread-adapter generator modified from Makrokaba's generator; see [Licence](#licence). |
+| `shear_pin_details.md` | Notes on sizing nylon shear screws, which `calcs.scad` follows. |
 
 ## Usage
 
-Set parameters in the script.
+1. Install [OpenSCAD](https://openscad.org/).
+2. Open `calcs.scad` and edit the input variables in the section below the
+   `// Example Usage` comment. Units are given in each variable's comment:
+   altitudes in metres, the tube diameter and bay dimensions in millimetres,
+   friction in newtons, material strengths in psi.
+3. Preview or render, and read the results in the console.
 
-## Calculations 
-### Black Powder Calculation
+There is no unit parsing and there are no presets: the helper functions
+(`convert_to_meters`, `convert_to_pascals`, `convert_to_newtons`,
+`convert_to_grams`) only convert the units the script itself passes them.
 
-Pressure is set by desired force, or force can be set by specifying the desired pressure. This is based on the force applied to the area at the end of the volume to be pressurized.*See the next section for how to use the shear screw calculation function for determining the required ejection force and minimum shear pin / screw specifications to withstand flight*.
+`canister.scad` and `Adapters_Mod/` need the
+[threadlib](https://github.com/adrianschlatter/threadlib) OpenSCAD library
+installed in your OpenSCAD library path (`use <threadlib/threadlib.scad>`). It
+is not included in this repository, and no version has been pinned.
 
-$P = \frac{F}{\pi \left( \frac{D}{2} \right)^2}$
+## How `calcs.scad` works
 
-where
+The steps, in the order the script runs them:
 
-- $F$ = desired force
-- $D$ = body tube diameter
+1. **Flight load.** The pressure difference between `start_altitude` and
+   `end_altitude` comes from the standard-atmosphere pressure formula. Acting
+   on the end of a tube of diameter `tube_diameter`, plus `friction_force`,
+   and multiplied by the factor of safety `fos`, it gives the minimum force
+   the shear screws must hold.
+2. **Shear screws.** Each screw's minimum breaking load uses its minor
+   diameter and `material_strength_min`; its maximum uses the pitch diameter
+   and `material_strength_max` (see `shear_pin_details.md`). The screw count
+   is the minimum force divided by the per-screw minimum load, rounded up,
+   **plus one**.
+3. **Ejection force.** The count times the per-screw maximum load, minus
+   `seal_factor` times the minimum force.
+4. **Ejection pressure** is that force over the area of a circle of diameter
+   $D$ (`internal_dia`):
 
-Once the desired pressure is known, the amount of black powder can be calculated using
+   $P = \frac{F}{\pi \left( \frac{D}{2} \right)^2}$
 
-$m = \frac{PV}{R_c T g}$
+5. **Black-powder mass** for a chamber of volume $V$, a cylinder of diameter
+   `internal_dia` and length `internal_len`:
 
-where
+   $m = \frac{PV}{R_c T g}$
 
-- $P$ = the pressure calculated in the previous equation
-- $V$ = the volume of the chamber to be pressurized
-- $R_c = 12.1579\, \frac{m}{K}$, combustion gas constant for FFFFg black powder
-- $T = 1739\, K$, combustion gas temperature
-- $g = 9.807\, \frac{m}{s^2}$, acceleration due to gravity
+   with $R_c = 12.1579$ (combustion gas constant for FFFFg black powder, as
+   given in the FreeCAD reference), $T = 1739\,\mathrm{K}$ (combustion gas
+   temperature) and $g = 9.807\,\mathrm{m/s^2}$. The script prints the mass
+   in grams, and again multiplied by the backup-charge factor `bucf`.
+6. **Powder volume and canister size.** The mass is converted to a volume
+   using 235 grains per cubic inch (from <https://www.tbullock.com/bpsg.html>),
+   increased by 10%, and turned into a cylinder with a height-to-diameter
+   ratio of 2. Foam packing is not included.
 
+The current inputs (0 to 12,000 ft, M3 Nylon 6/6 screws, `fos = 2`,
+`bucf = 1.5`) start from the example in `shear_pin_details.md` but depart from
+it in several places. Known inconsistencies, such as the `tube_diameter`
+comment saying 6 in while the value is 5.5 in, and the two different
+diameters used for the same bay, are tracked in issue #1. The output has not
+yet been compared with an independent calculator.
 
+### Open questions
 
-### Units
-
-Calculations are done using metric units, but will display in your preferred units. Values can also be entered using any supported units by including the units with the value (e.g., 5 oz, or 23.2 g).
+- **Where do `seal_factor = 0.25` and the `+ 1` in the screw count come
+  from?** Neither is explained in the code or the notes, and their origin is
+  not recorded. Until it is, treat them as unexplained margins rather than
+  derived values.
 
 ## References
 
-1. [FreeCAD Rocket- Rocket Ejection Charge Calculator](https://wiki.freecad.org/Rocket_Ejection_Charge_Calculator)
-1. [VernK Ejection Charge Sizing](http://vernk.com/EjectionChargeSizing.htm)
-2. [Insane Rocketry - Black Powder](https://www.insanerocketry.com/blackpowder.html)
-3. [Rocketry Calculator - BP Estimator](https://rocketrycalculator.com/rocketry-calculator/bp-estimator)
-4. [Rockethead - Black Powder Calculator](http://www.rockethead.net/black_powder_calculator.htm)
-5. [HARA - How to Size Ejection Charge](http://hararocketry.org/hara/resources/how-to-size-ejection-charge)
+1. [FreeCAD Rocket Workbench: Rocket Ejection Charge Calculator](https://wiki.freecad.org/Rocket_Ejection_Charge_Calculator), source of the pressure and black-powder formulas and constants
+2. [VernK: Ejection Charge Sizing](http://vernk.com/EjectionChargeSizing.htm)
+3. [Insane Rocketry: Black Powder](https://www.insanerocketry.com/blackpowder.html)
+4. [Rocketry Calculator: BP Estimator](https://rocketrycalculator.com/rocketry-calculator/bp-estimator)
+5. [Rockethead: Black Powder Calculator](http://www.rockethead.net/black_powder_calculator.htm)
+6. [HARA: How to Size Ejection Charge](http://hararocketry.org/hara/resources/how-to-size-ejection-charge)
+7. feretich.com, "Shear Pin/Screw Calculations", [archived copy](https://web.archive.org/web/20260417090259/http://feretich.com/Rocketry/Resources/shearPins.html) (see `shear_pin_details.md`)
+
+## Licence
+
+Copyright (c) 2024 Cameron Brooks. Licensed under the BSD 3-Clause licence;
+see [`LICENSE`](LICENSE).
+
+`Adapters_Mod/*.scad` are modified from Makrokaba's "Universal customizable
+OPENSCAD thread and pipe joint generator"
+(<https://www.thingiverse.com/thing:4323468>), Copyright (c) 2020 Makrokaba,
+published under a BSD licence. Each file keeps the original notice and
+conditions in its header, alongside the modification notice.
