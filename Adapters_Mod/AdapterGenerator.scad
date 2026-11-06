@@ -10,6 +10,12 @@ Date:       25.05.2020
 Author:     Makrokaba
 Version:    0.0-0.2
 
+Source:     Makrokaba, "Universal customizable OPENSCAD thread and pipe
+            joint generator", https://www.thingiverse.com/thing:4323468
+            (BSD licence; its conditions are reproduced below)
+Copyright (c) 2020 Makrokaba (original generator, versions 0.0-0.3)
+Copyright (c) 2024 Cameron Brooks (modifications, version 0.4)
+
 Universal fitting adapter generator common library
 
 After installation you can find all supported threads in the file
